@@ -447,6 +447,16 @@
   - Нативные проверки, требующие физического окружения Windows 10/11 x64 (запуск PE-бинарника, SmartScreen, Win32 UAC ShellExecuteEx), строго документированы и помечены как `NOT VERIFIED — REQUIRES WINDOWS`.
   - Все 10 этапов разработки и верификации проекта Sims 4 DLC Archive & Install Manager успешно завершены на 100%.
 
+- **2026-11-05 [Инфраструктура CI/CD: Настройка GitHub Actions Pipeline]:**
+  - Разработан workflow автоматизации `.github/workflows/ci.yml` с триггерами `push` и `pull_request` в ветку `main`, а также ручным запуском `workflow_dispatch`.
+  - Сконфигурированы 3 параллельных/зависимых jobs:
+    1. `test`: прогон полного набора тестов в Ubuntu / Python 3.12 x64 через `pytest -v tests` (отказ любого теста блокирует сборку).
+    2. `security-audit`: статические проверки безопасности (AST-тест изоляции импортов, автоматический тест Key Vault, аудит `sims4_manager.spec`, проверка индекса Git на отсутствие конфиденциальных файлов).
+    3. `windows-build`: сборка standalone клиента на Windows runner (`windows-latest`, Python 3.12 x64, PyInstaller 6.4+), глубокий аудит артефактов через `BundleInspector`, вычисление контрольных сумм `SHA256.txt` и публикация артефакта `Sims4_Store_Alpha-windows-x64` в хранилище GitHub Actions.
+  - Создан конфигурационный файл `pytest.ini` для стандартизированного обнаружения тестов в CI.
+  - В модуль `owner_tools/bundle_inspector.py` добавлена CLI-точка входа для интеграции с шагами автоматического аудита спеков и бандлов.
+
+
 
 
 

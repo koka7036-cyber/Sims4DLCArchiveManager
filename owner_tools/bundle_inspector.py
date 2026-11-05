@@ -298,3 +298,56 @@ class BundleInspector:
                     raise ManifestVerificationError(
                         f"Checksum mismatch in SHA256.txt for '{fname}': expected {expected_hash}, got {actual_hash}"
                     )
+
+
+def main(args=None):
+    """CLI entrypoint for standalone bundle auditing in CI/CD pipelines."""
+    import argparse
+    parser = argparse.ArgumentParser(description="Sims 4 DLC Archive Manager - Bundle Inspector & Auditor")
+    parser.add_argument("--audit-spec", type=str, default=None, help="Path to PyInstaller .spec file to audit")
+    parser.add_argument("--audit-bundle", type=str, default=None, help="Path to compiled bundle directory to audit")
+    parser.add_argument("--store-id", type=str, default=None, help="Expected target store identifier (e.g. store_alpha)")
+    parser.add_argument("--verify-release", type=str, default=None, help="Path to release directory to verify with public key")
+    parser.add_argument("--public-key", type=str, default=None, help="Path to ed25519_public.pem for release verification")
+    parsed = parser.parse_args(args)
+
+    if not any([parsed.audit_spec, parsed.audit_bundle, parsed.verify_release]):
+        parser.print_help()
+        sys.exit(0)
+
+    if parsed.audit_spec:
+        spec_path = Path(parsed.audit_spec)
+        report = BundleInspector.audit_pyinstaller_spec(spec_path)
+        if not report.is_valid:
+            print(f"FAILED: Spec audit violations detected in {spec_path}:", file=sys.stderr)
+            for v in report.violations:
+                print(f"  - {v}", file=sys.stderr)
+            sys.exit(1)
+        print(f"PASSED: PyInstaller spec '{spec_path}' audit succeeded.")
+
+    if parsed.audit_bundle:
+        bundle_path = Path(parsed.audit_bundle)
+        report = BundleInspector.audit_bundle_directory(bundle_path, expected_store_id=parsed.store_id)
+        if not report.is_valid:
+            print(f"FAILED: Bundle audit violations detected in {bundle_path}:", file=sys.stderr)
+            for v in report.violations:
+                print(f"  - {v}", file=sys.stderr)
+            sys.exit(1)
+        print(f"PASSED: Bundle directory '{bundle_path}' audit succeeded ({report.scanned_files_count} files scanned, 0 owner_tools leaks, 0 secret files).")
+
+    if parsed.verify_release:
+        rel_path = Path(parsed.verify_release)
+        pub_key_path = Path(parsed.public_key) if parsed.public_key else (rel_path / "ed25519_public.pem")
+        if not pub_key_path.is_file():
+            print(f"FAILED: Public key not found: {pub_key_path}", file=sys.stderr)
+            sys.exit(1)
+        public_key_bytes = pub_key_path.read_bytes()
+        report = BundleInspector.verify_release_integrity(rel_path, public_key_bytes, expected_store_id=parsed.store_id or "store_alpha")
+        if not report.is_valid:
+            print(f"FAILED: Release integrity verification failed: {report.violations}", file=sys.stderr)
+            sys.exit(1)
+        print(f"PASSED: Release integrity for '{rel_path}' fully verified.")
+
+
+if __name__ == "__main__":
+    main()
