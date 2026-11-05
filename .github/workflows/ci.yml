@@ -111,7 +111,7 @@ jobs:
 
       - name: Generate SHA256.txt checksums for release bundle
         run: |
-          python -c "import hashlib, os; p = 'dist/Sims4_Store_Alpha'; lines = [f'{hashlib.sha256(open(os.path.join(p, f), \"rb\").read()).hexdigest()}  {f}' for f in sorted(os.listdir(p)) if os.path.isfile(os.path.join(p, f)) and f != 'SHA256.txt']; open(os.path.join(p, 'SHA256.txt'), 'w', encoding='utf-8').write('\n'.join(lines) + '\n'); print(f'Successfully generated SHA256.txt with {len(lines)} file hashes.')"
+          python -m owner_tools.packaging --generate-checksums dist/Sims4_Store_Alpha
 
       - name: Upload compiled client artifact
         uses: actions/upload-artifact@v4

@@ -250,3 +250,23 @@ class PackagingEngine:
         sha_file = release_dir / "SHA256.txt"
         sha_file.write_text("\n".join(checksums) + "\n", encoding="utf-8")
         return sha_file
+
+
+def main(args=None):
+    """CLI entrypoint for packaging and checksum generation in CI/CD pipelines."""
+    import argparse
+    parser = argparse.ArgumentParser(description="Sims 4 DLC Archive Manager - Packaging & Release Tools")
+    parser.add_argument("--generate-checksums", type=str, default=None, help="Directory to generate SHA256.txt for")
+    parsed = parser.parse_args(args)
+
+    if parsed.generate_checksums:
+        target_dir = Path(parsed.generate_checksums)
+        if not target_dir.is_dir():
+            print(f"ERROR: Target directory not found: {target_dir}", file=sys.stderr)
+            sys.exit(1)
+        sha_file = PackagingEngine.generate_sha256_checksums(target_dir)
+        print(f"Successfully generated checksums in: {sha_file}")
+
+
+if __name__ == "__main__":
+    main()

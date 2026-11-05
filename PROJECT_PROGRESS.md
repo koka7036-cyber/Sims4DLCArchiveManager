@@ -456,6 +456,7 @@
   - Создан конфигурационный файл `pytest.ini` для стандартизированного обнаружения тестов в CI.
   - В модуль `owner_tools/bundle_inspector.py` добавлена CLI-точка входа для интеграции с шагами автоматического аудита спеков и бандлов.
   - В job `test` (Ubuntu) добавлена установка `xvfb` и запуск тестов через виртуальный дисплей `xvfb-run -a pytest -v tests` для поддержки GUI/CustomTkinter тестов в headless Linux без X11 сервера.
+  - В модуль `owner_tools/packaging.py` добавлена CLI-точка входа `--generate-checksums`, исключающая ошибки экранирования кавычек в PowerShell раннера Windows при генерации `SHA256.txt`.
 
 
 
