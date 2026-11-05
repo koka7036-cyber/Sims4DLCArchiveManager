@@ -1,0 +1,18 @@
+{
+  "store_id": "store_beta",
+  "store_name": "Modern Play Games",
+  "application_name": "Sims 4 DLC Archive Hub - Modern Edition",
+  "application_version": "1.0.0",
+  "theme_id": "modern_cyber_blue",
+  "sources": {
+    "primary_dlc_folder": "https://disk.yandex.ru/d/pYDq0CSIwqclFA",
+    "helper_archive_url": "https://disk.yandex.ru/d/RgVixKr-6QlLsQ"
+  },
+  "features": {
+    "allow_custom_oauth": false,
+    "allow_backup_management": true,
+    "allow_verify_only": true,
+    "auto_run_helper_default": false,
+    "dry_run_available": true
+  }
+}

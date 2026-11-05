@@ -1,0 +1,19 @@
+{
+  "theme_id": "modern_cyber_blue",
+  "theme_name": "Modern Gaming Cyber Blue",
+  "palette": {
+    "background_dark": "#0d1117",
+    "surface_dark": "#161b22",
+    "surface_secondary": "#21262d",
+    "accent_primary": "#58a6ff",
+    "accent_hover": "#1f6feb",
+    "accent_subtle": "#113264",
+    "text_primary": "#f0f6fc",
+    "text_secondary": "#c9d1d9",
+    "text_muted": "#8b949e",
+    "border_color": "#30363d",
+    "danger": "#f85149",
+    "warning": "#d29922",
+    "info": "#79c0ff"
+  }
+}

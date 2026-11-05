@@ -1,0 +1,41 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# Database and SQLite WAL files
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Downloads and temp files
+*.part
+*.lock
+uac_resume_*.dat
+.s4_staging_*
+
+# Crypto keys and vaults
+*.key
+*.vault
+ed25519_master.key
+
+# AI Studio temporary upload assets & prompt dumps
+public/assets/aistudio/
+public/assets/aistudio/*

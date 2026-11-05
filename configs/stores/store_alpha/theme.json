@@ -1,0 +1,19 @@
+{
+  "theme_id": "sims4_dark_green",
+  "theme_name": "The Sims 4 Plumbob Green",
+  "palette": {
+    "background_dark": "#121815",
+    "surface_dark": "#1a2420",
+    "surface_secondary": "#24322c",
+    "accent_primary": "#2ecc71",
+    "accent_hover": "#27ae60",
+    "accent_subtle": "#165b32",
+    "text_primary": "#f0fdf4",
+    "text_secondary": "#a7f3d0",
+    "text_muted": "#6ee7b7",
+    "border_color": "#2d4a3e",
+    "danger": "#e74c3c",
+    "warning": "#f39c12",
+    "info": "#3498db"
+  }
+}

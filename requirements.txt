@@ -1,0 +1,6 @@
+requests>=2.31.0
+urllib3>=2.0.0
+customtkinter>=5.2.0
+cryptography>=42.0.0
+py7zr>=0.20.0
+rarfile>=4.1

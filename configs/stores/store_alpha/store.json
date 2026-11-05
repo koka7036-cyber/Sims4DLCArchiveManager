@@ -1,0 +1,18 @@
+{
+  "store_id": "store_alpha",
+  "store_name": "Fanfiriel Games Store",
+  "application_name": "Sims 4 DLC Loader - Fanfiriel Edition",
+  "application_version": "1.0.0",
+  "theme_id": "sims4_dark_green",
+  "sources": {
+    "primary_dlc_folder": "https://disk.yandex.ru/d/pYDq0CSIwqclFA",
+    "helper_archive_url": "https://disk.yandex.ru/d/RgVixKr-6QlLsQ"
+  },
+  "features": {
+    "allow_custom_oauth": true,
+    "allow_backup_management": true,
+    "allow_verify_only": true,
+    "auto_run_helper_default": true,
+    "dry_run_available": true
+  }
+}

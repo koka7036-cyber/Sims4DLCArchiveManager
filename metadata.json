@@ -1,0 +1,6 @@
+{
+  "name": "Sims 4 DLC Archive Manager",
+  "description": "White Label Windows-приложение для управления и установки архивов дополнений The Sims 4.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
