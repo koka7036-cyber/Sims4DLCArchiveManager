@@ -1,8 +1,8 @@
 # ЖУРНАЛ ПРОГРЕССА ПРОЕКТА: SIMS 4 DLC ARCHIVE & INSTALL MANAGER
 
-- **Текущее состояние проекта:** ВСЕ ЭТАПЫ 0–10 ЗАВЕРШЕНЫ В РАЗРАБОТКЕ (152/152 тестов пройдено, 100%)
+- **Текущее состояние проекта:** ВСЕ ЭТАПЫ 0–10 ЗАВЕРШЕНЫ В РАЗРАБОТКЕ (153/153 тестов пройдено, 100%)
 - **Дата фиксации:** 2026-11-05
-- **Активный этап:** Разработка всех этапов завершена в полном объёме; точечно устранены runtime-ошибки Windows EXE (GameFinder.find_game_directory и StateDatabase.get_transaction_history)
+- **Активный этап:** Разработка всех этапов завершена в полном объёме; точечно устранены runtime-ошибки Windows EXE (GameFinder, StateDatabase.get_transaction_history, YandexClient)
 
 ---
 
@@ -235,7 +235,7 @@
      - `ConsentDialog` (модальный шлюз согласия пользователя User Consent Gate для DLC Помощника);
      - `DryRunDialog` (отчёт симуляции CREATE vs OVERWRITE). (ВЫПОЛНЕНО)
   9. Реализация главного окна `gui/main_window.py` и точки входа `gui/app.py` (`Sims4ManagerApp`). (ВЫПОЛНЕНО)
-- **Обязательные тесты этапа (статус: 16/16 успешно пройдено, суммарно 152/152 по проекту):**
+- **Обязательные тесты этапа (статус: 17/17 успешно пройдено, суммарно 153/153 по проекту):**
   - `tests/test_branding_themes.py`:
     - Проверка встроенных палитр `BUILTIN_PALETTES` (sims4_dark_green, modern_cyber_blue, minimal_pro_slate, marketplace_emerald).
     - Загрузка `theme.json` для `store_alpha` (sims4_dark_green, #2ecc71, #121815).
@@ -250,8 +250,9 @@
     - Проверка инициализации всех 4 модальных диалогов (`ConfirmationDialog`, `ErrorDialog`, `ConsentDialog`, `DryRunDialog`).
     - Сквозная проверка инициализации приложения `Sims4ManagerApp` для профилей `store_alpha` и `store_beta`.
     - Тест интеграции `StateDatabase.get_transaction_history` и отображения журнала в `HistoryView` (пофайловый аудит, статус, сортировка).
-    - Тест методов и алиасов `GameFinder` (`find_game_directory`, `validate_game_directory`, `is_ntfs_filesystem`, `deep_scan_dlcs`) и фонового сканирования `AppController.scan_game_installation`. (16 тестов) — ВЫПОЛНЕНО.
-- **Критерии приёмки:** Интерфейс плавно строится в тёмной теме; брендинг и палитры полностью соответствуют выбранному `store_id`; бизнес-логика и низкоуровневые API Win32/NT не импортируются напрямую в GUI; протоколы безопасности и User Consent Gate строго соблюдены; runtime-методы поиска игры и истории транзакций согласованы с ядром; 100% тестов успешно проходят в автоматизированном режиме (152/152). (КРИТЕРИИ ПРИЁМКИ ЭТАПА 8 ПОЛНОСТЬЮ ВЫПОЛНЕНЫ В РАЗРАБОТКЕ)
+    - Тест методов и алиасов `GameFinder` (`find_game_directory`, `validate_game_directory`, `is_ntfs_filesystem`, `deep_scan_dlcs`) и фонового сканирования `AppController.scan_game_installation`.
+    - Тест геттера клиента облачного каталога `AppController.get_yandex_client` (импорт и инстанцирование существующего `YandexClient`). (17 тестов) — ВЫПОЛНЕНО.
+- **Критерии приёмки:** Интерфейс плавно строится в тёмной теме; брендинг и палитры полностью соответствуют выбранному `store_id`; бизнес-логика и низкоуровневые API Win32/NT не импортируются напрямую в GUI; протоколы безопасности и User Consent Gate строго соблюдены; runtime-методы поиска игры, истории транзакций и облачного клиента согласованы с ядром; 100% тестов успешно проходят в автоматизированном режиме (153/153). (КРИТЕРИИ ПРИЁМКИ ЭТАПА 8 ПОЛНОСТЬЮ ВЫПОЛНЕНЫ В РАЗРАБОТКЕ)
 
 ---
 
@@ -418,7 +419,7 @@
   - Разработан менеджер ассетов `branding/asset_manager.py` и профиля `branding/branding_manager.py` с полной изоляцией White Label и отсутствием захардкоженных строковых констант.
   - Реализован слой совместимости `gui/ctk_compat.py`: поддержка нативного `customtkinter` на Windows и полноценного headless mock-цикла в Linux/CI для непрерывного прогона автоматических тестов без X11 сервера.
   - Реализован слой моделей представления `gui/state.py` (`DLCUIItem`, `GameUIInfo`, `OperationState`, `DLCStatus`, `TaskState`).
-  - Реализован контроллер `gui/controller.py`, управляющий вызовами сервисов ядра (`GameFinder`, `CatalogDatabase`, `StateDatabase`, `YandexDiskClient`, `DownloadManager`, `DLCInstaller`, `BackupManager`, `CrashRecoveryEngine`, `PostInstallHelper`) в фоновых потоках без блокировки интерфейса и без прямого использования Win32/NT API в коде GUI.
+  - Реализован контроллер `gui/controller.py`, управляющий вызовами сервисов ядра (`GameFinder`, `CatalogDatabase`, `StateDatabase`, `YandexClient`, `DownloadManager`, `DLCInstaller`, `BackupManager`, `CrashRecoveryEngine`, `PostInstallHelper`) в фоновых потоках без блокировки интерфейса и без прямого использования Win32/NT API в коде GUI.
   - Реализован навигационный контроллер `gui/navigation.py` для переключения между 7 представлениями.
   - Реализованы 7 представлений (`DashboardView`, `CatalogView`, `DownloadsView`, `InspectorView`, `BackupsView`, `HistoryView`, `SettingsView`).
   - Реализованы 4 модальных диалога (`ConfirmationDialog`, `ErrorDialog`, `ConsentDialog` с User Consent Gate, `DryRunDialog`).

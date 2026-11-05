@@ -463,6 +463,12 @@ class TestGUIComponentsAndFlow(unittest.TestCase):
         self.assertEqual(self.controller.dlc_items["EP01"].status, DLCStatus.INSTALLED)
         self.assertEqual(self.controller.game_info.error_message, "")
 
+    def test_controller_yandex_client_getter(self):
+        """Verify AppController.get_yandex_client correctly imports and instantiates YandexClient."""
+        from core.yandex_client import YandexClient
+        client = self.controller.get_yandex_client()
+        self.assertIsInstance(client, YandexClient)
+
 
 if __name__ == "__main__":
     unittest.main()

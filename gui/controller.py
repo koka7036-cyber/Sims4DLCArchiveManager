@@ -155,8 +155,8 @@ class AppController:
 
     def get_yandex_client(self) -> Any:
         if self._yandex_client is None:
-            from core.yandex_client import YandexDiskClient
-            self._yandex_client = YandexDiskClient()
+            from core.yandex_client import YandexClient
+            self._yandex_client = YandexClient()
         return self._yandex_client
 
     def set_yandex_client(self, client: Any) -> None:
