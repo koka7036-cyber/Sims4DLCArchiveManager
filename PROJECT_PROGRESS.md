@@ -455,6 +455,7 @@
     3. `windows-build`: сборка standalone клиента на Windows runner (`windows-latest`, Python 3.12 x64, PyInstaller 6.4+), глубокий аудит артефактов через `BundleInspector`, вычисление контрольных сумм `SHA256.txt` и публикация артефакта `Sims4_Store_Alpha-windows-x64` в хранилище GitHub Actions.
   - Создан конфигурационный файл `pytest.ini` для стандартизированного обнаружения тестов в CI.
   - В модуль `owner_tools/bundle_inspector.py` добавлена CLI-точка входа для интеграции с шагами автоматического аудита спеков и бандлов.
+  - В job `test` (Ubuntu) добавлена установка `xvfb` и запуск тестов через виртуальный дисплей `xvfb-run -a pytest -v tests` для поддержки GUI/CustomTkinter тестов в headless Linux без X11 сервера.
 
 
 
