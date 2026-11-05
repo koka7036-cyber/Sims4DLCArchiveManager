@@ -27,6 +27,16 @@ class InvalidSignatureError(SecurityError):
     pass
 
 
+class ManifestVerificationError(SecurityError):
+    """Raised when release manifest or file checksum verification fails."""
+    pass
+
+
+class WhiteLabelLeakError(SecurityError):
+    """Raised when cross-store data or owner tools leak into a distribution package."""
+    pass
+
+
 class KeyVaultError(SecurityError):
     """Raised when Key Vault container export/import or challenge fails."""
     pass
