@@ -332,6 +332,56 @@ class StateDatabase:
                 for r in rows
             ]
 
+    def get_transaction_history(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Retrieves recent transaction history for audit and GUI display.
+        Returns up to `limit` records ordered by creation timestamp descending.
+        Each record dictionary provides:
+        - tx_id: Transaction identifier
+        - store_id: Brand/Store identifier
+        - dlc_code: DLC code (e.g. 'EP01')
+        - status: High-level transaction status string
+        - operation_type: 'INSTALL', 'ROLLBACK', or 'RECOVERY'
+        - created_at: Timestamp string
+        - updated_at: Timestamp string
+        - files_count: Total logged file operations in this transaction
+        """
+        with self._lock:
+            cur = self._conn.cursor()
+            cur.execute(
+                """
+                SELECT t.tx_id, t.store_id, t.dlc_code, t.status, t.created_at, t.updated_at,
+                       COUNT(f.id) as files_count
+                FROM transactions t
+                LEFT JOIN transaction_file_log f ON t.tx_id = f.tx_id
+                GROUP BY t.tx_id
+                ORDER BY t.created_at DESC, t.tx_id DESC
+                LIMIT ?;
+                """,
+                (limit,)
+            )
+            rows = cur.fetchall()
+            result: List[Dict[str, Any]] = []
+            for r in rows:
+                st = str(r["status"])
+                if "ROLL" in st:
+                    op_type = "ROLLBACK"
+                elif "RECOVERY" in st or "ABORT" in st:
+                    op_type = "RECOVERY"
+                else:
+                    op_type = "INSTALL"
+                result.append({
+                    "tx_id": str(r["tx_id"]),
+                    "store_id": str(r["store_id"]),
+                    "dlc_code": str(r["dlc_code"]),
+                    "status": st,
+                    "operation_type": op_type,
+                    "created_at": str(r["created_at"]),
+                    "updated_at": str(r["updated_at"]),
+                    "files_count": int(r["files_count"]),
+                })
+            return result
+
     def get_lease(self, tx_id: str) -> Optional[TransactionLeaseRecord]:
         """Retrieves lease authorization record for the specified tx_id."""
         with self._lock:

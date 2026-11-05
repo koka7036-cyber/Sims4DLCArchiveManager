@@ -5,7 +5,7 @@ Strictly adheres to PROJECT_SPEC.md v1.1.5 sections 3, 5.2, 7.4, 8.1, 8.2, 8.3, 
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+from typing import Optional, Any
 
 
 # ==============================================================================
@@ -89,6 +89,9 @@ class TransactionRecord:
     created_at: str
     updated_at: str
 
+    def __getitem__(self, item: str) -> Any:
+        return getattr(self, item)
+
 
 @dataclass
 class TransactionLeaseRecord:
@@ -100,6 +103,9 @@ class TransactionLeaseRecord:
     handoff_hash: Optional[str]
     acquired_at: str
     updated_at: str
+
+    def __getitem__(self, item: str) -> Any:
+        return getattr(self, item)
 
 
 @dataclass
@@ -120,6 +126,9 @@ class TransactionFileLogRecord:
     created_at: str
     updated_at: str
 
+    def __getitem__(self, item: str) -> Any:
+        return getattr(self, item)
+
 
 @dataclass
 class DLCItemRecord:
@@ -135,6 +144,9 @@ class DLCItemRecord:
     is_installed: bool = False
     last_scanned_at: Optional[str] = None
 
+    def __getitem__(self, item: str) -> Any:
+        return getattr(self, item)
+
 
 @dataclass
 class DownloadHistoryRecord:
@@ -145,6 +157,9 @@ class DownloadHistoryRecord:
     total_bytes: int
     status: str
     completed_at: Optional[str] = None
+
+    def __getitem__(self, item: str) -> Any:
+        return getattr(self, item)
 
 
 # ==============================================================================

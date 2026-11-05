@@ -209,49 +209,74 @@ class AppController:
             self.set_busy(TaskState.SCANNING_GAME, "Поиск The Sims 4 и проверка NTFS...")
             try:
                 finder = self.get_game_finder()
-                game_path = None
+                game_inst = None
 
                 if custom_path:
-                    game_path = finder.validate_game_directory(custom_path)
+                    if hasattr(finder, "validate_custom_path"):
+                        game_inst = finder.validate_custom_path(custom_path)
+                    elif hasattr(finder, "validate_game_directory"):
+                        p = finder.validate_game_directory(custom_path)
+                        from core.game_finder import GameInstallation
+                        game_inst = GameInstallation(path=Path(p), volume_path=str(p), filesystem="NTFS", source="manual")
                 else:
-                    game_path = finder.find_game_directory()
+                    if hasattr(finder, "find_game"):
+                        game_inst = finder.find_game()
+                    elif hasattr(finder, "find_game_directory"):
+                        p = finder.find_game_directory()
+                        if p:
+                            from core.game_finder import GameInstallation
+                            game_inst = GameInstallation(path=Path(p), volume_path=str(p), filesystem="NTFS", source="auto")
 
-                if not game_path:
+                if not game_inst:
                     self.game_info.found = False
                     self.game_info.path = ""
                     self.game_info.error_message = "Игра не обнаружена в реестре или Steam."
                     self.set_idle("The Sims 4 не найдена.")
                     return
 
-                # NTFS check
-                is_ntfs = finder.is_ntfs_filesystem(str(game_path))
-                if not is_ntfs:
+                game_path = game_inst.path if hasattr(game_inst, "path") else Path(game_inst)
+                fs_name = getattr(game_inst, "filesystem", "NTFS")
+
+                # Verify NTFS
+                if fs_name.upper() != "NTFS":
                     raise UnsupportedFilesystemError(
-                        f"Каталог игры '{game_path}' расположен на неподдерживаемой файловой системе (требуется NTFS)."
+                        f"Каталог игры '{game_path}' расположен на неподдерживаемой файловой системе '{fs_name}' (требуется NTFS)."
                     )
 
                 # Scan installed DLCs
-                installed_dlcs = finder.deep_scan_dlcs(str(game_path))
+                from core.game_finder import DeepDLCScanner, GameInstallation
+                if isinstance(game_inst, GameInstallation):
+                    scan_report = DeepDLCScanner.scan_game_installation(game_inst)
+                    installed_count = scan_report.installed_count
+                    installed_codes = {c.upper() for c, info in scan_report.dlcs.items() if info.is_installed}
+                elif hasattr(finder, "deep_scan_dlcs"):
+                    installed_list = finder.deep_scan_dlcs(str(game_path))
+                    installed_count = len(installed_list)
+                    installed_codes = {Path(p).name.upper() for p in installed_list}
+                else:
+                    temp_inst = GameInstallation(path=game_path, volume_path=str(game_path), filesystem=fs_name, source="manual")
+                    scan_report = DeepDLCScanner.scan_game_installation(temp_inst)
+                    installed_count = scan_report.installed_count
+                    installed_codes = {c.upper() for c, info in scan_report.dlcs.items() if info.is_installed}
 
                 self.game_info.found = True
                 self.game_info.path = str(game_path)
-                self.game_info.filesystem = "NTFS"
-                self.game_info.installed_dlc_count = len(installed_dlcs)
+                self.game_info.filesystem = fs_name
+                self.game_info.installed_dlc_count = installed_count
                 self.game_info.error_message = ""
 
                 # Mark corresponding DLC items as INSTALLED
                 with self._lock:
-                    for dlc_folder in installed_dlcs:
-                        folder_name = Path(dlc_folder).name.upper()
-                        if folder_name in self.dlc_items:
-                            self.dlc_items[folder_name].status = DLCStatus.INSTALLED
+                    for code in installed_codes:
+                        if code in self.dlc_items:
+                            self.dlc_items[code].status = DLCStatus.INSTALLED
 
                 self.set_idle(f"Игра обнаружена: {self.game_info.installed_dlc_count} DLC установлено.")
             except UnsupportedFilesystemError as e:
                 self.game_info.found = False
                 self.game_info.error_message = str(e)
                 self.set_error(str(e))
-            except GameNotFoundError as e:
+            except (GameNotFoundError, FilesystemError) as e:
                 self.game_info.found = False
                 self.game_info.error_message = str(e)
                 self.set_idle("The Sims 4 не найдена.")

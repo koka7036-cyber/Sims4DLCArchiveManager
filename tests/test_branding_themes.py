@@ -366,6 +366,103 @@ class TestGUIComponentsAndFlow(unittest.TestCase):
         self.assertEqual(app_beta.branding.theme.theme_id, "modern_cyber_blue")
         app_beta.window.quit()
 
+    def test_state_database_get_transaction_history_and_history_view(self):
+        """Verify StateDatabase.get_transaction_history API and HistoryView integration."""
+        from database.database import StateDatabase
+        from database.models import TransactionStatus, FileActionType, FileLogStatus
+        import time
+
+        db = StateDatabase(self.context.state_db_path)
+        # Empty DB check
+        self.assertEqual(db.get_transaction_history(), [])
+
+        # Create a real transaction and file log
+        tx = db.create_transaction(
+            tx_id="tx_test_audit_01",
+            store_id="store_alpha",
+            dlc_code="EP01",
+            lease_token="00000000-0000-4000-8000-000000000001",
+            owner_pid=os.getpid(),
+            initial_status=TransactionStatus.INSTALLED
+        )
+        # Verify TransactionRecord supports dictionary-style indexing
+        self.assertEqual(tx["tx_id"], "tx_test_audit_01")
+        self.assertEqual(tx["dlc_code"], "EP01")
+
+        db.log_file_action(
+            tx_id="tx_test_audit_01",
+            relative_path="Game/EP01/Client.package",
+            action_type=FileActionType.CREATE,
+            staging_path="/tmp/staging.pkg",
+            target_sha256="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            status=FileLogStatus.APPLIED
+        )
+
+        history = db.get_transaction_history(limit=10)
+        self.assertEqual(len(history), 1)
+        item = history[0]
+        self.assertEqual(item["tx_id"], "tx_test_audit_01")
+        self.assertEqual(item["dlc_code"], "EP01")
+        self.assertEqual(item["operation_type"], "INSTALL")
+        self.assertEqual(item["files_count"], 1)
+
+        # Wire with controller and verify HistoryView
+        self.controller.set_state_db(db)
+        window = MainWindow(self.controller)
+        window.view_history.update_view()
+        # Verify that children widgets were created in log_scroll
+        children = window.view_history.log_scroll.winfo_children()
+        self.assertGreater(len(children), 0)
+        window.quit()
+
+    def test_game_finder_methods_and_controller_scan(self):
+        """Verify GameFinder API aliases and AppController.scan_game_installation execution."""
+        from core.game_finder import GameFinder
+        import time
+
+        finder = GameFinder()
+        # Verify required API methods are all present
+        self.assertTrue(hasattr(finder, "find_game"))
+        self.assertTrue(hasattr(finder, "find_game_directory"))
+        self.assertTrue(hasattr(finder, "validate_custom_path"))
+        self.assertTrue(hasattr(finder, "validate_game_directory"))
+        self.assertTrue(hasattr(finder, "is_ntfs_filesystem"))
+        self.assertTrue(hasattr(finder, "deep_scan_dlcs"))
+
+        # Verify is_ntfs_filesystem returns bool without raising
+        self.assertIsInstance(finder.is_ntfs_filesystem(str(self.base_path)), bool)
+
+        # Create mock valid Sims 4 directory with EP01 DLC
+        game_dir = self.base_path / "The Sims 4"
+        (game_dir / "Game" / "Bin").mkdir(parents=True)
+        (game_dir / "Game" / "Bin" / "TS4_x64.exe").write_bytes(b"MZ_DUMMY_EXE")
+        (game_dir / "EP01").mkdir()
+        (game_dir / "EP01" / "EP01.package").write_bytes(b"PACKAGE_BYTES")
+
+        self.controller.dlc_items["EP01"] = DLCUIItem(
+            item_id="EP01",
+            title="EP01 Get to Work",
+            dlc_type="EP",
+            archive_name="EP01.zip",
+            archive_size=1024,
+            status=DLCStatus.AVAILABLE
+        )
+
+        # Trigger scan
+        self.controller.scan_game_installation(custom_path=str(game_dir))
+
+        # Wait for worker thread to complete
+        for _ in range(50):
+            if not self.controller.operation_state.is_busy:
+                break
+            time.sleep(0.05)
+
+        self.assertFalse(self.controller.operation_state.is_busy)
+        self.assertTrue(self.controller.game_info.found)
+        self.assertEqual(self.controller.game_info.installed_dlc_count, 1)
+        self.assertEqual(self.controller.dlc_items["EP01"].status, DLCStatus.INSTALLED)
+        self.assertEqual(self.controller.game_info.error_message, "")
+
 
 if __name__ == "__main__":
     unittest.main()

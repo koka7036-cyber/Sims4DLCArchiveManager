@@ -371,6 +371,48 @@ class GameFinder:
             source="manual"
         )
 
+    def find_game_directory(self) -> Optional[Path]:
+        """
+        Discovers The Sims 4 installation directory, returning Path or None.
+        """
+        inst = self.find_game()
+        return inst.path if inst else None
+
+    def validate_game_directory(self, custom_path: str) -> Path:
+        """
+        Validates custom path as valid The Sims 4 installation, returning Path.
+        """
+        inst = self.validate_custom_path(custom_path)
+        return inst.path
+
+    @staticmethod
+    def is_ntfs_filesystem(path: str) -> bool:
+        """
+        Checks whether the specified path resides on an NTFS volume.
+        """
+        try:
+            _, fs = verify_ntfs_filesystem(path)
+            return fs.upper() == "NTFS"
+        except Exception:
+            return False
+
+    @staticmethod
+    def deep_scan_dlcs(game_path: str) -> List[str]:
+        """
+        Deep scans DLC folders in game directory and returns list of installed DLC folder names.
+        """
+        p = Path(game_path).resolve()
+        vol = get_volume_path(str(p))
+        fs = get_volume_filesystem(vol)
+        inst = GameInstallation(
+            path=p,
+            volume_path=vol,
+            filesystem=fs,
+            source="manual"
+        )
+        report = DeepDLCScanner.scan_game_installation(inst)
+        return [info.dlc_code for info in report.dlcs.values() if info.is_installed]
+
     def search_registry(self) -> Optional[Path]:
         """
         Queries Windows Registry (HKLM and HKCU, 64-bit and 32-bit views).
