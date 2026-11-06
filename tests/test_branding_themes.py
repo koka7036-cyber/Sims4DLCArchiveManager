@@ -8,6 +8,7 @@ import tempfile
 import threading
 import unittest
 from unittest.mock import patch
+import zipfile
 from pathlib import Path
 
 from core.app_context import AppContext, set_current_context
@@ -727,6 +728,27 @@ class TestIntegrationAuditAndRegression(unittest.TestCase):
 
         kwargs = mocked.call_args.kwargs
         self.assertEqual(Path(kwargs["initialdir"]).resolve(), self.context.downloads_dir.resolve())
+        window.quit()
+
+    def test_inspector_verify_only_uses_current_report_fields(self):
+        """Verify Only must render the current InspectionReport dataclass without AttributeError."""
+        from gui.main_window import MainWindow
+
+        archive = self.context.downloads_dir / "EP01_test.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr("EP01/Data/Simulation.package", b"package-data")
+            zf.writestr("EP01/Data/Delta.bin", b"delta-data")
+
+        window = MainWindow(self.controller)
+        iv = window.view_inspector
+        iv.archive_entry.insert(0, str(archive))
+        iv._on_verify_only()
+
+        rendered = iv.results_text.cget("text")
+        self.assertIn("Файлов DLC (.package): 1", rendered)
+        self.assertIn("Общий распакованный размер:", rendered)
+        self.assertIn("Корень DLC: EP01", rendered)
+        self.assertNotIn("AttributeError", rendered)
         window.quit()
 
     def test_inspector_view_empty_input_handling(self):
