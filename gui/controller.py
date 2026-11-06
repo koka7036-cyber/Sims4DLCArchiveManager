@@ -191,6 +191,24 @@ class AppController:
     def set_download_manager(self, manager: Any) -> None:
         self._download_manager = manager
 
+    def open_downloads_folder(self) -> bool:
+        """Open the actual local DLC download directory in the system file manager."""
+        path = self.context.downloads_dir
+        path.mkdir(parents=True, exist_ok=True)
+        try:
+            if sys.platform == "win32":
+                os.startfile(str(path))  # type: ignore[attr-defined]
+            elif sys.platform == "darwin":
+                import subprocess
+                subprocess.Popen(["open", str(path)])
+            else:
+                import subprocess
+                subprocess.Popen(["xdg-open", str(path)])
+            return True
+        except Exception as e:
+            logger.error("Failed to open downloads directory '%s': %s", path, e)
+            return False
+
     def get_backup_manager(self) -> Any:
         if self._backup_manager is None:
             from core.backup_manager import BackupManager
