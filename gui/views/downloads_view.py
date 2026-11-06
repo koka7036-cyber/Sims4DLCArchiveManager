@@ -146,4 +146,4 @@ class DownloadsView(CTkFrame):
 
     def _cancel_download(self, item: Any) -> None:
         mgr = self.controller.get_download_manager()
-        mgr.cancel_all()
+        mgr.cancel_task(item.item_id)

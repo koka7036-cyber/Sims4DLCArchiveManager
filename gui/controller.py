@@ -11,6 +11,7 @@ Strictly conforms to PROJECT_SPEC.md:
 import os
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Any
 
@@ -166,8 +167,7 @@ class AppController:
         if self._download_manager is None:
             from core.downloader import DownloadManager
             self._download_manager = DownloadManager(
-                downloads_dir=self.context.downloads_dir,
-                max_workers=3
+                max_concurrent=2
             )
         return self._download_manager
 
@@ -382,39 +382,122 @@ class AppController:
             try:
                 client = self.get_yandex_client()
                 downloader = self.get_download_manager()
+                from core.downloader import DownloadTask, DownloadStatus, DownloadProgress
+
+                submitted_tasks = []
 
                 for item in selected:
-                    item.status = DLCStatus.DOWNLOADING
-                    self.active_downloads[item.item_id] = item
+                    with self._lock:
+                        item.status = DLCStatus.DOWNLOADING
+                        item.download_progress = 0.0
+                        self.active_downloads[item.item_id] = item
                     self.notify_change()
 
                     # Retrieve direct link
-                    direct_url = client.get_public_download_url(
-                        public_key=self.branding.primary_dlc_folder,
-                        path="/" + item.archive_name
-                    )
+                    try:
+                        direct_url = client.get_public_download_url(
+                            public_key=self.branding.primary_dlc_folder,
+                            path="/" + item.archive_name
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to get direct URL for {item.archive_name}: {e}")
+                        with self._lock:
+                            item.status = DLCStatus.ERROR
+                            self.active_downloads.pop(item.item_id, None)
+                        self.set_error(f"Не удалось получить ссылку для {item.title}: {e}")
+                        continue
 
-                    def progress_hook(downloaded, total, speed, eta):
-                        item.download_progress = downloaded / max(1, total)
-                        item.download_speed = speed
-                        item.eta_seconds = int(eta)
-                        self.notify_change()
-
-                    # Download with Range 206
-                    downloader.download_file(
+                    task = DownloadTask(
                         url=direct_url,
+                        destination_dir=self.context.downloads_dir,
                         filename=item.archive_name,
-                        expected_size=item.archive_size,
+                        task_id=item.item_id,
+                        expected_size=item.archive_size if item.archive_size and item.archive_size > 0 else None,
                         expected_sha256=item.sha256 or None,
-                        progress_callback=progress_hook
                     )
 
-                    item.status = DLCStatus.DOWNLOADED
-                    item.download_progress = 1.0
-                    self.active_downloads.pop(item.item_id, None)
-                    self.notify_change()
+                    def make_progress_handler(target_item: DLCUIItem):
+                        def on_progress(p: DownloadProgress):
+                            with self._lock:
+                                if p.status == DownloadStatus.DOWNLOADING:
+                                    target_item.status = DLCStatus.DOWNLOADING
+                                    target_item.download_progress = p.progress_percent / 100.0
+                                    target_item.download_speed = p.speed_bps
+                                    target_item.eta_seconds = int(p.eta_seconds) if p.eta_seconds is not None else None
+                                elif p.status == DownloadStatus.COMPLETED:
+                                    target_item.status = DLCStatus.DOWNLOADED
+                                    target_item.download_progress = 1.0
+                                    target_item.download_speed = 0.0
+                                    target_item.eta_seconds = 0
+                                    self.active_downloads.pop(target_item.item_id, None)
+                                elif p.status == DownloadStatus.CANCELLED:
+                                    target_item.status = DLCStatus.AVAILABLE
+                                    target_item.download_progress = 0.0
+                                    target_item.download_speed = 0.0
+                                    self.active_downloads.pop(target_item.item_id, None)
+                                elif p.status == DownloadStatus.FAILED:
+                                    target_item.status = DLCStatus.ERROR
+                                    target_item.download_progress = 0.0
+                                    target_item.download_speed = 0.0
+                                    self.active_downloads.pop(target_item.item_id, None)
+                            self.notify_change()
+                        return on_progress
 
-                self.set_idle("Загрузка выбранных архивов завершена.")
+                    task_id = downloader.submit(task, progress_callback=make_progress_handler(item))
+                    submitted_tasks.append((item, task_id))
+
+                if not submitted_tasks:
+                    self.set_idle("Нет доступных задач для загрузки.")
+                    return
+
+                # Wait for all submitted tasks in this batch to finish
+                terminal_statuses = {DownloadStatus.COMPLETED, DownloadStatus.CANCELLED, DownloadStatus.FAILED}
+                while True:
+                    all_done = True
+                    for it, tid in submitted_tasks:
+                        prog = downloader.get_progress(tid)
+                        if prog is None or prog.status not in terminal_statuses:
+                            all_done = False
+                            break
+                    if all_done:
+                        break
+                    time.sleep(0.1)
+
+                # Finalize states
+                failed_items = []
+                cancelled_items = []
+                completed_items = []
+                for it, tid in submitted_tasks:
+                    prog = downloader.get_progress(tid)
+                    if prog:
+                        if prog.status == DownloadStatus.COMPLETED:
+                            completed_items.append(it)
+                            with self._lock:
+                                it.status = DLCStatus.DOWNLOADED
+                                it.download_progress = 1.0
+                                self.active_downloads.pop(it.item_id, None)
+                        elif prog.status == DownloadStatus.CANCELLED:
+                            cancelled_items.append(it)
+                            with self._lock:
+                                it.status = DLCStatus.AVAILABLE
+                                it.download_progress = 0.0
+                                self.active_downloads.pop(it.item_id, None)
+                        elif prog.status == DownloadStatus.FAILED:
+                            failed_items.append((it, prog.error_message))
+                            with self._lock:
+                                it.status = DLCStatus.ERROR
+                                it.download_progress = 0.0
+                                self.active_downloads.pop(it.item_id, None)
+                self.notify_change()
+
+                if failed_items:
+                    first_err = failed_items[0][1] or "Ошибка загрузки"
+                    self.set_error(f"Сбой загрузки ({len(failed_items)} из {len(submitted_tasks)}): {first_err}")
+                elif cancelled_items and not completed_items:
+                    self.set_idle("Загрузка отменена пользователем.")
+                else:
+                    self.set_idle(f"Загрузка {len(completed_items)} архивов успешно завершена.")
+
             except DownloadCancelledError:
                 self.set_idle("Загрузка отменена пользователем.")
             except HashMismatchError as e:

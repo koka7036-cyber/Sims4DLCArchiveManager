@@ -469,6 +469,110 @@ class TestGUIComponentsAndFlow(unittest.TestCase):
         client = self.controller.get_yandex_client()
         self.assertIsInstance(client, YandexClient)
 
+    def test_controller_download_manager_getter(self):
+        """Verify AppController.get_download_manager instantiates DownloadManager with valid signature."""
+        from core.downloader import DownloadManager
+        dm = self.controller.get_download_manager()
+        self.assertIsInstance(dm, DownloadManager)
+        self.assertEqual(dm.max_concurrent, 2)
+
+    def test_controller_start_download_selected_integration(self):
+        """Verify start_download_selected creates valid DownloadTask, submits to DownloadManager, and updates status."""
+        from unittest.mock import MagicMock
+        from core.downloader import DownloadManager, FileDownloader, DownloadProgress, DownloadStatus
+        import time
+
+        # Setup mock Yandex client returning direct URL
+        mock_yandex = MagicMock()
+        mock_yandex.get_public_download_url.return_value = "https://mock.example/download/EP01.zip"
+        self.controller.set_yandex_client(mock_yandex)
+
+        # Setup custom FileDownloader mock that completes successfully
+        mock_downloader = MagicMock(spec=FileDownloader)
+        def fake_download(task, progress_callback=None, cancel_event=None):
+            # Assert task properties
+            self.assertEqual(task.destination_dir, self.context.downloads_dir)
+            self.assertEqual(task.filename, "EP01.zip")
+            self.assertEqual(task.task_id, "EP01")
+            self.assertEqual(task.url, "https://mock.example/download/EP01.zip")
+            self.assertEqual(task.expected_size, 1024)
+
+            p = DownloadProgress(
+                task_id=task.task_id,
+                status=DownloadStatus.COMPLETED,
+                downloaded_bytes=1024,
+                total_bytes=1024,
+                progress_percent=100.0,
+            )
+            if progress_callback:
+                progress_callback(p)
+            return p
+
+        mock_downloader.download.side_effect = fake_download
+        dm = DownloadManager(max_concurrent=2, downloader=mock_downloader)
+        self.controller.set_download_manager(dm)
+
+        # Register DLC item in controller
+        self.controller.dlc_items["EP01"] = DLCUIItem(
+            item_id="EP01",
+            title="EP01 Get to Work",
+            dlc_type="EP",
+            archive_name="EP01.zip",
+            archive_size=1024,
+            status=DLCStatus.AVAILABLE,
+            selected=True,
+        )
+
+        # Trigger download
+        self.controller.start_download_selected()
+
+        # Wait for worker thread to complete
+        for _ in range(50):
+            if not self.controller.operation_state.is_busy:
+                break
+            time.sleep(0.05)
+
+        self.assertFalse(self.controller.operation_state.is_busy)
+        self.assertEqual(self.controller.dlc_items["EP01"].status, DLCStatus.DOWNLOADED)
+        self.assertEqual(self.controller.dlc_items["EP01"].download_progress, 1.0)
+        self.assertNotIn("EP01", self.controller.active_downloads)
+
+    def test_controller_start_download_failure_handling(self):
+        """Verify start_download_selected sets error message on download failure."""
+        from unittest.mock import MagicMock
+        from core.downloader import DownloadManager, FileDownloader, DownloadError
+        import time
+
+        mock_yandex = MagicMock()
+        mock_yandex.get_public_download_url.return_value = "https://mock.example/download/EP02.zip"
+        self.controller.set_yandex_client(mock_yandex)
+
+        mock_downloader = MagicMock(spec=FileDownloader)
+        mock_downloader.download.side_effect = DownloadError("Network socket dropped")
+        dm = DownloadManager(max_concurrent=2, downloader=mock_downloader)
+        self.controller.set_download_manager(dm)
+
+        self.controller.dlc_items["EP02"] = DLCUIItem(
+            item_id="EP02",
+            title="EP02 Get Together",
+            dlc_type="EP",
+            archive_name="EP02.zip",
+            archive_size=2048,
+            status=DLCStatus.AVAILABLE,
+            selected=True,
+        )
+
+        self.controller.start_download_selected()
+
+        for _ in range(50):
+            if not self.controller.operation_state.is_busy:
+                break
+            time.sleep(0.05)
+
+        self.assertFalse(self.controller.operation_state.is_busy)
+        self.assertEqual(self.controller.dlc_items["EP02"].status, DLCStatus.ERROR)
+        self.assertIn("Сбой загрузки", self.controller.operation_state.last_error)
+
 
 if __name__ == "__main__":
     unittest.main()

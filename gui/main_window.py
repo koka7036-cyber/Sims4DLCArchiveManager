@@ -100,7 +100,8 @@ class MainWindow(CTk):
             # Cancel downloads or operations safely
             try:
                 mgr = self.controller.get_download_manager()
-                mgr.cancel_all()
+                for task_id in list(self.controller.active_downloads.keys()):
+                    mgr.cancel_task(task_id)
             except Exception:
                 pass
         self.quit()
