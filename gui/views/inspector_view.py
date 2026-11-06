@@ -135,6 +135,7 @@ class InspectorView(CTkFrame):
         try:
             chosen = filedialog.askopenfilename(
                 title="Выберите архив DLC для инспекции",
+                initialdir=str(self.controller.context.downloads_dir),
                 filetypes=[("Архивы DLC", "*.zip *.7z *.rar"), ("Все файлы", "*.*")]
             )
             if chosen:
