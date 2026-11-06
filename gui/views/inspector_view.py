@@ -176,9 +176,9 @@ class InspectorView(CTkFrame):
                 f"Файл: {p.name}",
                 f"Размер: {p.stat().st_size} байт",
                 f"Всего файлов в архиве: {res.total_files}",
-                f"Файлов DLC (.package): {res.package_files_count}",
-                f"Общий распакованный размер: {res.total_uncompressed_size / (1024*1024):.2f} MB",
-                f"Корень DLC: {res.root_prefix or 'Корень игры'}",
+                f"Файлов DLC (.package): {res.package_count}",
+                f"Общий распакованный размер: {res.total_uncompressed_bytes / (1024*1024):.2f} MB",
+                f"Корень DLC: {res.detected_dlc_code or 'Корень игры'}",
                 f"Безопасность путей: OK (Path Traversal / Symlinks / DOS devices не обнаружены)",
                 f"Исполняемые файлы: OK (Запрещённые бинарники отсутствуют)",
                 f"Статус: АРХИВ ПОЛНОСТЬЮ ВАЛИДЕН И БЕЗОПАСЕН К УСТАНОВКЕ"
