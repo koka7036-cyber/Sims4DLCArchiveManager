@@ -89,6 +89,20 @@ class SettingsView(CTkFrame):
 
         self._add_info_row(self.paths_card, "Базы данных (state.db / catalog.db):", str(ctx.database_dir))
         self._add_info_row(self.paths_card, "Каталог загрузок архивов (.part):", str(ctx.downloads_dir))
+
+        download_actions = CTkFrame(self.paths_card, fg_color="transparent")
+        download_actions.pack(fill="x", padx=12, pady=(4, 2))
+        CTkButton(
+            download_actions,
+            text="Открыть папку загрузок DLC",
+            width=190,
+            height=28,
+            fg_color=self.theme.surface_secondary,
+            hover_color=self.theme.accent_subtle,
+            text_color=self.theme.text_primary,
+            command=self._open_downloads_folder
+        ).pack(side="left")
+
         self._add_info_row(self.paths_card, "Пользовательские бэкапы:", str(ctx.user_backups_dir))
         self._add_info_row(self.paths_card, "Файловые блокировки (locks):", str(ctx.locks_dir))
         self._add_info_row(self.paths_card, "Файл журнала (app.log):", str(ctx.log_file_path))
@@ -128,6 +142,16 @@ class SettingsView(CTkFrame):
         row.pack(fill="x", padx=12, pady=2)
         CTkLabel(row, text=label, width=280, anchor="w", font=CTkFont(size=12, weight="bold"), text_color=self.theme.text_secondary).pack(side="left")
         CTkLabel(row, text=val, anchor="w", font=CTkFont(size=12), text_color=self.theme.text_muted).pack(side="left", fill="x", expand=True)
+
+    def _open_downloads_folder(self) -> None:
+        if not self.controller.open_downloads_folder():
+            from gui.dialogs.error_dialog import ErrorDialog
+            ErrorDialog(
+                self,
+                "Папка загрузок",
+                f"Не удалось открыть папку загрузок:\n{self.controller.context.downloads_dir}",
+                self.theme,
+            )
 
     def _check_db_integrity(self) -> None:
         try:
