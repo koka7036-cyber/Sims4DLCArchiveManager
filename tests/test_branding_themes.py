@@ -7,6 +7,7 @@ import os
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from core.app_context import AppContext, set_current_context
@@ -713,6 +714,20 @@ class TestIntegrationAuditAndRegression(unittest.TestCase):
         with self.assertRaises(Sims4ManagerError) as ctx:
             self.controller.perform_dry_run("EP01", archive_path=self.base_path / "missing.zip")
         self.assertIn("Файл архива не найден", str(ctx.exception))
+
+    def test_inspector_browse_starts_in_downloads_directory(self):
+        """Archive picker must start in the application's real DLC downloads directory."""
+        from gui.views.inspector_view import InspectorView
+        from gui.main_window import MainWindow
+
+        window = MainWindow(self.controller)
+        iv: InspectorView = window.view_inspector
+        with patch("gui.views.inspector_view.filedialog.askopenfilename", return_value="") as mocked:
+            iv._on_browse_file()
+
+        kwargs = mocked.call_args.kwargs
+        self.assertEqual(Path(kwargs["initialdir"]).resolve(), self.context.downloads_dir.resolve())
+        window.quit()
 
     def test_inspector_view_empty_input_handling(self):
         from gui.views.inspector_view import InspectorView
