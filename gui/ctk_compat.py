@@ -138,6 +138,9 @@ else:
         def winfo_children(self) -> List["MockWidget"]:
             return list(self.children)
 
+        def winfo_ismapped(self) -> bool:
+            return bool(self._packed or self._gridded)
+
         def after(self, ms: int, func: Optional[Callable] = None, *args) -> str:
             if func:
                 # In headless tests, execute immediately or allow inspection

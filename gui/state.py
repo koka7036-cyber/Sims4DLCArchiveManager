@@ -74,7 +74,12 @@ class DLCUIItem:
         if self.download_speed <= 0:
             return "—"
         mb = self.download_speed / (1024 * 1024)
-        return f"{mb:.2f} MB/s"
+        if mb >= 0.1:
+            return f"{mb:.2f} MB/s"
+        kb = self.download_speed / 1024
+        if kb >= 0.1:
+            return f"{kb:.1f} KB/s"
+        return f"{self.download_speed:.0f} B/s"
 
     @property
     def formatted_eta(self) -> str:

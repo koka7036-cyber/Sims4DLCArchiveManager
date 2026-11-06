@@ -25,6 +25,8 @@ class DownloadsView(CTkFrame):
         super().__init__(master, fg_color=theme.background_dark, **kwargs)
         self.controller = controller
         self.theme = theme
+        self._cards = {}
+        self._empty_label = None
 
         self._build_ui()
         self.controller.add_listener(self.update_view)
@@ -60,22 +62,58 @@ class DownloadsView(CTkFrame):
         self.scroll_container.pack(fill="both", expand=True, padx=24, pady=(12, 24))
 
     def update_view(self) -> None:
-        for child in self.scroll_container.winfo_children():
-            child.destroy()
-
         active = list(self.controller.active_downloads.values())
+        active_ids = {item.item_id for item in active}
+
+        # Remove cards for tasks no longer active
+        for item_id in list(self._cards.keys()):
+            if item_id not in active_ids:
+                card_data = self._cards.pop(item_id, None)
+                if card_data and "card" in card_data:
+                    try:
+                        card_data["card"].destroy()
+                    except Exception:
+                        pass
+
         if not active:
-            empty_lbl = CTkLabel(
-                self.scroll_container,
-                text="Нет активных загрузок в очереди.",
-                font=CTkFont(size=14),
-                text_color=self.theme.text_muted
-            )
-            empty_lbl.pack(pady=40)
+            if self._empty_label is None:
+                self._empty_label = CTkLabel(
+                    self.scroll_container,
+                    text="Нет активных загрузок в очереди.",
+                    font=CTkFont(size=14),
+                    text_color=self.theme.text_muted
+                )
+                self._empty_label.pack(pady=40)
             return
 
+        if self._empty_label is not None:
+            try:
+                self._empty_label.destroy()
+            except Exception:
+                pass
+            self._empty_label = None
+
         for item in active:
-            self._render_download_card(item)
+            if item.item_id in self._cards:
+                self._update_download_card(item)
+            else:
+                self._render_download_card(item)
+
+    def _update_download_card(self, item: Any) -> None:
+        card_data = self._cards.get(item.item_id)
+        if not card_data:
+            return
+
+        pct = int(item.download_progress * 100)
+        curr_mb = (item.archive_size * item.download_progress) / (1024 * 1024)
+        total_mb = item.archive_size / (1024 * 1024)
+        metrics_text = f"{pct}% ({curr_mb:.1f} MB / {total_mb:.1f} MB)   |   Скорость: {item.formatted_speed}   |   Осталось: {item.formatted_eta}"
+
+        try:
+            card_data["pbar"].set(item.download_progress)
+            card_data["metrics_lbl"].configure(text=metrics_text)
+        except Exception:
+            pass
 
     def _render_download_card(self, item: Any) -> None:
         card = CTkFrame(
@@ -124,12 +162,13 @@ class DownloadsView(CTkFrame):
         total_mb = item.archive_size / (1024 * 1024)
 
         metrics_text = f"{pct}% ({curr_mb:.1f} MB / {total_mb:.1f} MB)   |   Скорость: {item.formatted_speed}   |   Осталось: {item.formatted_eta}"
-        CTkLabel(
+        metrics_lbl = CTkLabel(
             bot_line,
             text=metrics_text,
             font=CTkFont(size=12),
             text_color=self.theme.text_secondary
-        ).pack(side="left")
+        )
+        metrics_lbl.pack(side="left")
 
         # Cancel button
         btn_cancel = CTkButton(
@@ -143,6 +182,12 @@ class DownloadsView(CTkFrame):
             command=lambda it=item: self._cancel_download(it)
         )
         btn_cancel.pack(side="right")
+
+        self._cards[item.item_id] = {
+            "card": card,
+            "pbar": pbar,
+            "metrics_lbl": metrics_lbl,
+        }
 
     def _cancel_download(self, item: Any) -> None:
         mgr = self.controller.get_download_manager()

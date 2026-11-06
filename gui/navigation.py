@@ -54,6 +54,11 @@ class NavigationController:
         target_view = self.views[key]
         if hasattr(target_view, "pack"):
             target_view.pack(fill="both", expand=True)
+        if hasattr(target_view, "update_view"):
+            try:
+                target_view.update_view()
+            except Exception as e:
+                logger.error(f"Error updating view '{key}' on navigation: {e}")
 
         # Update sidebar button highlighting
         for b_key, btn in self.sidebar_buttons.items():

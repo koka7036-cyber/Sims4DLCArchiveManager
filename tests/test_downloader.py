@@ -522,6 +522,49 @@ class TestDownloadManager(IsolatedEnvironmentTestCase):
         p = manager.get_progress(task_id)
         self.assertEqual(p.status, DownloadStatus.CANCELLED)
 
+    def test_throttled_progress_callback_and_speed_ema(self):
+        """
+        Verify that progress callbacks are throttled during chunk streaming
+        and that speed is calculated and smoothed with EMA.
+        """
+        mock_session = MagicMock(spec=requests.Session)
+        chunk_data = b"0123456789ABCDEF" * 64  # 1 KB chunk
+        total_chunks = 30
+        payload = chunk_data * total_chunks
+        sha256 = hashlib.sha256(payload).hexdigest()
+
+        mock_response = MockStreamResponse(
+            status_code=200,
+            chunks=[chunk_data] * total_chunks,
+            headers={"Content-Length": str(len(payload))},
+        )
+        mock_session.request.return_value = mock_response
+
+        downloader = FileDownloader(session=mock_session)
+        task = DownloadTask(
+            url="https://mock.example/stream.zip",
+            destination_dir=self.dest_dir,
+            filename="stream.zip",
+            expected_size=len(payload),
+            expected_sha256=sha256,
+        )
+
+        progress_reports: list[DownloadProgress] = []
+        def on_prog(p: DownloadProgress):
+            progress_reports.append(p)
+
+        res = downloader.download(task, progress_callback=on_prog)
+
+        self.assertEqual(res.status, DownloadStatus.COMPLETED)
+        # Because all 30 chunks are yielded rapidly in <0.5s:
+        # progress is reported on first chunk, final in-flight chunk, and completion.
+        # It must NOT be called 30+ times.
+        self.assertLess(len(progress_reports), total_chunks)
+        self.assertGreaterEqual(len(progress_reports), 2)
+        # Final report must show completed status
+        self.assertEqual(progress_reports[-1].status, DownloadStatus.COMPLETED)
+        self.assertEqual(progress_reports[-1].progress_percent, 100.0)
+
 
 if __name__ == "__main__":
     unittest.main()

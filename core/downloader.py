@@ -454,6 +454,7 @@ class FileDownloader:
         last_time = time.time()
         bytes_since_last = 0
         speed_bps = 0.0
+        first_chunk = True
 
         try:
             with open(part_path, file_mode) as f:
@@ -470,37 +471,63 @@ class FileDownloader:
                         current_downloaded += chunk_len
                         bytes_since_last += chunk_len
 
-                        # Calculate speed and ETA every ~0.5s or on update
                         now = time.time()
                         elapsed = now - last_time
-                        if elapsed >= 0.5:
-                            speed_bps = bytes_since_last / elapsed
+
+                        # Emit progress on first chunk or when ~0.5s has elapsed
+                        if first_chunk or elapsed >= 0.5:
+                            if elapsed > 0 and bytes_since_last > 0:
+                                instant_speed = bytes_since_last / elapsed
+                                if speed_bps <= 0.0 or first_chunk:
+                                    speed_bps = instant_speed
+                                else:
+                                    # Exponential moving average (EMA) for stable, non-jittery speed display
+                                    speed_bps = 0.7 * instant_speed + 0.3 * speed_bps
+
                             last_time = now
                             bytes_since_last = 0
+                            first_chunk = False
 
-                        eta_seconds = None
-                        progress_percent = 0.0
-                        if total_bytes and total_bytes > 0:
-                            progress_percent = min(100.0, (current_downloaded / total_bytes) * 100.0)
-                            if speed_bps > 0:
-                                remaining_bytes = max(0, total_bytes - current_downloaded)
-                                eta_seconds = remaining_bytes / speed_bps
+                            eta_seconds = None
+                            progress_percent = 0.0
+                            if total_bytes and total_bytes > 0:
+                                progress_percent = min(100.0, (current_downloaded / total_bytes) * 100.0)
+                                if speed_bps > 0:
+                                    remaining_bytes = max(0, total_bytes - current_downloaded)
+                                    eta_seconds = remaining_bytes / speed_bps
 
-                        if progress_callback:
-                            progress_callback(DownloadProgress(
-                                task_id=task.task_id or task.filename,
-                                status=DownloadStatus.DOWNLOADING,
-                                downloaded_bytes=current_downloaded,
-                                total_bytes=total_bytes,
-                                speed_bps=speed_bps,
-                                eta_seconds=eta_seconds,
-                                progress_percent=progress_percent,
-                                part_path=part_path,
-                                final_path=task.final_path,
-                            ))
+                            if progress_callback:
+                                progress_callback(DownloadProgress(
+                                    task_id=task.task_id or task.filename,
+                                    status=DownloadStatus.DOWNLOADING,
+                                    downloaded_bytes=current_downloaded,
+                                    total_bytes=total_bytes,
+                                    speed_bps=speed_bps,
+                                    eta_seconds=eta_seconds,
+                                    progress_percent=progress_percent,
+                                    part_path=part_path,
+                                    final_path=task.final_path,
+                                ))
 
                 f.flush()
                 os.fsync(f.fileno())
+
+                # Final in-flight progress notification after all chunks stream successfully
+                if progress_callback:
+                    final_pct = 100.0 if (total_bytes and current_downloaded >= total_bytes) else (
+                        (current_downloaded / total_bytes * 100.0) if total_bytes and total_bytes > 0 else 0.0
+                    )
+                    progress_callback(DownloadProgress(
+                        task_id=task.task_id or task.filename,
+                        status=DownloadStatus.DOWNLOADING,
+                        downloaded_bytes=current_downloaded,
+                        total_bytes=total_bytes,
+                        speed_bps=speed_bps,
+                        eta_seconds=0.0 if final_pct >= 100.0 else None,
+                        progress_percent=final_pct,
+                        part_path=part_path,
+                        final_path=task.final_path,
+                    ))
         finally:
             response.close()
 

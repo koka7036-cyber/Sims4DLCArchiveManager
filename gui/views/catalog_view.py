@@ -5,7 +5,7 @@ Displays search, filters (All, Installed, Not Installed, Verify Needed),
 DLC table with statuses, selection checkboxes, sizes, and action triggers.
 """
 
-from typing import Any, List
+from typing import Any, Dict, List
 from gui.ctk_compat import (
     CTkFrame,
     CTkScrollableFrame,
@@ -166,13 +166,12 @@ class CatalogView(CTkFrame):
     def update_view(self) -> None:
         """Renders DLC items filtered by search and active filter tab."""
         search_query = self.search_entry.get().strip().upper()
-
-        # Clear existing rows
-        for child in self.table_scroll.winfo_children():
-            child.destroy()
-
         items = list(self.controller.dlc_items.values())
+
         if not items:
+            for child in self.table_scroll.winfo_children():
+                child.destroy()
+            self._item_row_widgets.clear()
             empty_lbl = CTkLabel(
                 self.table_scroll,
                 text="Каталог пуст. Нажмите «Обновить каталог из облака» на главной панели.",
@@ -181,6 +180,21 @@ class CatalogView(CTkFrame):
             )
             empty_lbl.pack(pady=40)
             return
+
+        # Check if rows are already rendered and filter/query haven't changed
+        current_state_key = (self.active_filter, search_query, len(items))
+        if getattr(self, "_last_rendered_key", None) == current_state_key and self._item_row_widgets:
+            # Fast in-place status update!
+            for item in items:
+                row_data = self._item_row_widgets.get(item.item_id)
+                if row_data:
+                    self._update_row_status(item, row_data)
+            return
+
+        self._last_rendered_key = current_state_key
+        for child in self.table_scroll.winfo_children():
+            child.destroy()
+        self._item_row_widgets.clear()
 
         for item in items:
             # Filter checks
@@ -195,6 +209,30 @@ class CatalogView(CTkFrame):
                 continue
 
             self._render_dlc_row(item)
+
+    def _update_row_status(self, item: DLCUIItem, row_data: Dict[str, Any]) -> None:
+        status_color = self.theme.text_muted
+        status_text = "Доступно"
+        if item.status == DLCStatus.INSTALLED:
+            status_color = self.theme.accent_primary
+            status_text = "Установлено"
+        elif item.status == DLCStatus.DOWNLOADING:
+            status_color = self.theme.info
+            status_text = f"Загрузка ({int(item.download_progress * 100)}%)"
+        elif item.status == DLCStatus.DOWNLOADED:
+            status_color = self.theme.warning
+            status_text = "Скачано"
+        elif item.status == DLCStatus.READY_TO_INSTALL:
+            status_color = self.theme.accent_primary
+            status_text = "Готово к установке"
+        elif item.status == DLCStatus.ERROR:
+            status_color = self.theme.danger
+            status_text = "Ошибка"
+
+        try:
+            row_data["status_lbl"].configure(text=status_text, text_color=status_color)
+        except Exception:
+            pass
 
     def _render_dlc_row(self, item: DLCUIItem) -> None:
         row = CTkFrame(
@@ -261,13 +299,14 @@ class CatalogView(CTkFrame):
             status_color = self.theme.danger
             status_text = "Ошибка"
 
-        CTkLabel(
+        status_lbl = CTkLabel(
             row,
             text=status_text,
             width=140,
             font=CTkFont(size=12, weight="bold"),
             text_color=status_color
-        ).pack(side="left", padx=8)
+        )
+        status_lbl.pack(side="left", padx=8)
 
         # Action button
         action_btn = CTkButton(
@@ -281,6 +320,13 @@ class CatalogView(CTkFrame):
             command=lambda it=item: self._on_dry_run_item(it)
         )
         action_btn.pack(side="right", padx=12)
+
+        self._item_row_widgets[item.item_id] = {
+            "row": row,
+            "chk": chk,
+            "status_lbl": status_lbl,
+            "action_btn": action_btn,
+        }
 
     def _toggle_selection(self, item: DLCUIItem) -> None:
         item.selected = not item.selected

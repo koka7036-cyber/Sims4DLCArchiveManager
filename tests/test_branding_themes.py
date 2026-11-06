@@ -573,6 +573,50 @@ class TestGUIComponentsAndFlow(unittest.TestCase):
         self.assertEqual(self.controller.dlc_items["EP02"].status, DLCStatus.ERROR)
         self.assertIn("Сбой загрузки", self.controller.operation_state.last_error)
 
+    def test_downloads_view_inplace_card_updating_and_speed_scaling(self):
+        """Verify DownloadsView in-place card updating and formatted_speed scaling."""
+        from gui.views.downloads_view import DownloadsView
+        from gui.main_window import MainWindow
+
+        # Test speed formatting unit scaling
+        item = DLCUIItem(item_id="EP01", title="EP01", dlc_type="EP", archive_name="EP01.zip", archive_size=100 * 1024 * 1024)
+        item.download_speed = 0.0
+        self.assertEqual(item.formatted_speed, "—")
+        item.download_speed = 50.0  # 50 B/s
+        self.assertEqual(item.formatted_speed, "50 B/s")
+        item.download_speed = 50 * 1024.0  # 50 KB/s
+        self.assertEqual(item.formatted_speed, "50.0 KB/s")
+        item.download_speed = 5.5 * 1024 * 1024.0  # 5.5 MB/s
+        self.assertEqual(item.formatted_speed, "5.50 MB/s")
+
+        # Test DownloadsView in-place card reuse
+        window = MainWindow(self.controller)
+        dv: DownloadsView = window.view_downloads
+
+        # Add active download
+        self.controller.active_downloads["EP01"] = item
+        dv.update_view()
+
+        self.assertIn("EP01", dv._cards)
+        original_card = dv._cards["EP01"]["card"]
+
+        # Advance progress and update view
+        item.download_progress = 0.5
+        item.download_speed = 2.5 * 1024 * 1024.0
+        dv.update_view()
+
+        # The card instance must be reused in-place, not destroyed and replaced
+        self.assertIn("EP01", dv._cards)
+        self.assertIs(dv._cards["EP01"]["card"], original_card)
+
+        # Remove download
+        self.controller.active_downloads.pop("EP01")
+        dv.update_view()
+        self.assertNotIn("EP01", dv._cards)
+        self.assertIsNotNone(dv._empty_label)
+
+        window.quit()
+
 
 if __name__ == "__main__":
     unittest.main()

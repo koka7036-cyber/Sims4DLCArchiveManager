@@ -417,6 +417,8 @@ class AppController:
                     )
 
                     def make_progress_handler(target_item: DLCUIItem):
+                        last_notify_time = [0.0]
+
                         def on_progress(p: DownloadProgress):
                             with self._lock:
                                 if p.status == DownloadStatus.DOWNLOADING:
@@ -440,7 +442,12 @@ class AppController:
                                     target_item.download_progress = 0.0
                                     target_item.download_speed = 0.0
                                     self.active_downloads.pop(target_item.item_id, None)
-                            self.notify_change()
+
+                            now = time.time()
+                            is_terminal = p.status in (DownloadStatus.COMPLETED, DownloadStatus.CANCELLED, DownloadStatus.FAILED)
+                            if is_terminal or (now - last_notify_time[0] >= 0.25):
+                                last_notify_time[0] = now
+                                self.notify_change()
                         return on_progress
 
                     task_id = downloader.submit(task, progress_callback=make_progress_handler(item))
