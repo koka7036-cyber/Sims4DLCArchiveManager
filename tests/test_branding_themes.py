@@ -5,6 +5,7 @@ Conforms strictly to PROJECT_SPEC.md v1.1.5 sections 5, 11, and 12.
 
 import os
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -616,6 +617,224 @@ class TestGUIComponentsAndFlow(unittest.TestCase):
         self.assertIsNotNone(dv._empty_label)
 
         window.quit()
+
+
+class TestIntegrationAuditAndRegression(unittest.TestCase):
+    """
+    Regression test suite ensuring cross-module integration integrity:
+    - Downloader convenience API and max_retries constructor
+    - AppController thread-safe UI dispatcher
+    - Dry Run custom archive path resolution
+    - User-friendly exception translation
+    - BackupManager user directory resolution
+    - InspectorView archive validation
+    """
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.base_path = Path(self.temp_dir.name)
+        store_json = Path("configs") / "stores" / "store_alpha" / "store.json"
+        self.context = AppContext.from_store_json(str(store_json), base_appdata_dir=str(self.base_path))
+        self.context.ensure_directories()
+        set_current_context(self.context)
+        self.branding = BrandingManager(self.context)
+        self.controller = AppController(self.context, self.branding)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_file_downloader_max_retries_and_download_file_method(self):
+        from core.downloader import FileDownloader, DownloadProgress, DownloadStatus
+        dl = FileDownloader(max_retries=3, timeout=10.0)
+        self.assertEqual(dl.max_retries, 3)
+        self.assertTrue(hasattr(dl, "download_file"))
+
+    def test_app_controller_ui_dispatcher_thread_safety(self):
+        dispatched_tasks = []
+        listener_called = []
+
+        self.controller.set_ui_dispatcher(lambda fn: dispatched_tasks.append(fn))
+        self.controller.add_listener(lambda: listener_called.append(True))
+
+        # Direct call from main thread executes synchronously
+        self.controller.notify_change()
+        self.assertEqual(len(listener_called), 1)
+        self.assertEqual(len(dispatched_tasks), 0)
+
+        # Call from background thread routes through dispatcher
+        worker_error = []
+        def _bg_notify():
+            try:
+                self.controller.notify_change()
+            except Exception as e:
+                worker_error.append(e)
+
+        t = threading.Thread(target=_bg_notify)
+        t.start()
+        t.join(timeout=2.0)
+
+        self.assertEqual(len(worker_error), 0)
+        self.assertEqual(len(dispatched_tasks), 1)
+        # Calling dispatched callback runs listeners
+        dispatched_tasks[0]()
+        self.assertEqual(len(listener_called), 2)
+
+    def test_translate_exception_clean_russian_messages(self):
+        from core.exceptions import Sims4UserDirectoryNotFoundError, Sims4ManagerError
+
+        err1 = Sims4UserDirectoryNotFoundError("Папка документов не найдена.")
+        msg1 = self.controller.translate_exception(err1)
+        self.assertNotIn("Произошла непредвиденная ошибка:", msg1)
+        self.assertEqual(msg1, "Папка документов не найдена.")
+
+        err2 = Sims4ManagerError("Укажите имя архива.")
+        msg2 = self.controller.translate_exception(err2)
+        self.assertNotIn("Произошла непредвиденная ошибка:", msg2)
+        self.assertEqual(msg2, "Укажите имя архива.")
+
+        err3 = ValueError("Некорректный аргумент.")
+        msg3 = self.controller.translate_exception(err3)
+        self.assertNotIn("Произошла непредвиденная ошибка:", msg3)
+        self.assertEqual(msg3, "Некорректный аргумент.")
+
+    def test_backup_manager_user_dir_resolution(self):
+        from core.backup_manager import BackupManager
+        bm = BackupManager(app_context=self.context)
+        user_dir = bm.get_default_sims4_user_dir()
+        self.assertIsInstance(user_dir, str)
+        self.assertTrue(user_dir.endswith("The Sims 4"))
+
+    def test_perform_dry_run_custom_path_validation(self):
+        from core.exceptions import Sims4ManagerError
+        self.controller.game_info.found = True
+        self.controller.game_info.path = str(self.base_path / "The Sims 4")
+
+        # Non-existent archive path must raise Sims4ManagerError with friendly message
+        with self.assertRaises(Sims4ManagerError) as ctx:
+            self.controller.perform_dry_run("EP01", archive_path=self.base_path / "missing.zip")
+        self.assertIn("Файл архива не найден", str(ctx.exception))
+
+    def test_inspector_view_empty_input_handling(self):
+        from gui.views.inspector_view import InspectorView
+        from gui.main_window import MainWindow
+        from core.exceptions import Sims4ManagerError
+
+        window = MainWindow(self.controller)
+        iv: InspectorView = window.view_inspector
+        iv.archive_entry.delete(0, "end")
+
+        with self.assertRaises(Sims4ManagerError) as ctx:
+            iv._resolve_archive_path()
+        self.assertIn("укажите имя архива", str(ctx.exception).lower())
+        window.quit()
+
+    def test_worker_thread_boundary_and_queue_isolation(self):
+        """Worker thread must only push to thread-safe queue; Tk widgets must not run in worker thread."""
+        window = MainWindow(self.controller)
+        worker_executed = []
+        listener_threads = []
+
+        def tracking_listener():
+            listener_threads.append(threading.current_thread().ident)
+
+        self.controller.add_listener(tracking_listener)
+
+        def bg_worker():
+            worker_executed.append(threading.current_thread().ident)
+            # Worker calls notify_change
+            self.controller.notify_change()
+
+        t = threading.Thread(target=bg_worker)
+        t.start()
+        t.join(timeout=2.0)
+
+        # Worker thread finished
+        self.assertEqual(len(worker_executed), 1)
+        worker_id = worker_executed[0]
+        self.assertNotEqual(worker_id, threading.main_thread().ident)
+
+        # While worker ran, listener was NOT called on worker thread!
+        self.assertEqual(len(listener_threads), 0)
+        # Instead, item was queued in thread-safe UI queue
+        self.assertFalse(window._ui_queue.empty())
+
+        # Main thread now drains the queue (simulating Tkinter main loop tick)
+        processed = window.drain_ui_queue()
+        self.assertEqual(processed, 1)
+        self.assertEqual(len(listener_threads), 1)
+        # Listener ran strictly on main thread!
+        self.assertEqual(listener_threads[0], threading.main_thread().ident)
+        self.assertNotEqual(listener_threads[0], worker_id)
+
+        self.controller.remove_listener(tracking_listener)
+        window.quit()
+
+    def test_terminal_download_state_delivery_through_queue(self):
+        """Terminal download events (COMPLETED/FAILED/CANCELLED) must be delivered safely via queue."""
+        from core.downloader import DownloadProgress, DownloadStatus
+        window = MainWindow(self.controller)
+
+        item = DLCUIItem(item_id="EP02", title="EP02", dlc_type="EP", archive_name="EP02.zip", archive_size=1000)
+        self.controller.dlc_items["EP02"] = item
+        self.controller.active_downloads["EP02"] = item
+
+        # Simulate terminal event in worker thread
+        def bg_terminal_event():
+            with self.controller._lock:
+                item.status = DLCStatus.DOWNLOADED
+                item.download_progress = 1.0
+                self.controller.active_downloads.pop("EP02", None)
+            self.controller.notify_change()
+
+        t = threading.Thread(target=bg_terminal_event)
+        t.start()
+        t.join(timeout=2.0)
+
+        # Main thread processes queue
+        window.drain_ui_queue()
+        self.assertEqual(self.controller.dlc_items["EP02"].status, DLCStatus.DOWNLOADED)
+        self.assertNotIn("EP02", self.controller.active_downloads)
+        window.quit()
+
+    def test_shutdown_safety_discards_queued_callbacks_without_calling_destroyed_gui(self):
+        """Shutdown must cancel poller, drain queue, and never execute queued tasks on destroyed widgets."""
+        window = MainWindow(self.controller)
+        called_after_shutdown = []
+
+        def dangerous_callback():
+            called_after_shutdown.append(True)
+
+        self.controller.add_listener(dangerous_callback)
+
+        # Push items to queue from worker thread
+        def bg_spam():
+            for _ in range(5):
+                self.controller.notify_change()
+
+        t = threading.Thread(target=bg_spam)
+        t.start()
+        t.join(timeout=2.0)
+
+        # Verify queue contains items before closing
+        self.assertFalse(window._ui_queue.empty())
+
+        # Close window while items are queued
+        window._on_close()
+
+        # Window state asserts
+        self.assertTrue(window._is_closing)
+        self.assertIsNone(window._poll_timer_id)
+        self.assertTrue(window._ui_queue.empty())
+
+        # No callbacks should have executed during/after shutdown
+        self.assertEqual(len(called_after_shutdown), 0)
+
+        # Attempt to drain again or push new item
+        window.drain_ui_queue()
+        window._enqueue_ui_callback(dangerous_callback)
+        self.assertEqual(len(called_after_shutdown), 0)
+
+        self.controller.remove_listener(dangerous_callback)
 
 
 if __name__ == "__main__":

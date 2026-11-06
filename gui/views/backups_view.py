@@ -5,6 +5,7 @@ Enables creating user backups (Saves, Tray, Mods), managing rollback points,
 and initiating transactional rollbacks via BackupManager and CrashRecoveryEngine.
 """
 
+from pathlib import Path
 from typing import Any
 from gui.ctk_compat import (
     CTkFrame,
@@ -64,7 +65,15 @@ class BackupsView(CTkFrame):
             text="Резервные копии данных пользователя (The Sims 4)",
             font=CTkFont(size=15, weight="bold"),
             text_color=self.theme.text_primary
-        ).pack(anchor="w", padx=12, pady=(4, 8))
+        ).pack(anchor="w", padx=12, pady=(4, 4))
+
+        self.user_dir_info_lbl = CTkLabel(
+            self.user_backup_card,
+            text="Определение папки The Sims 4...",
+            font=CTkFont(size=12),
+            text_color=self.theme.text_secondary
+        )
+        self.user_dir_info_lbl.pack(anchor="w", padx=12, pady=(0, 6))
 
         btn_row = CTkFrame(self.user_backup_card, fg_color="transparent")
         btn_row.pack(fill="x", padx=12, pady=4)
@@ -155,10 +164,28 @@ class BackupsView(CTkFrame):
         status_text = self.controller.check_crash_recovery()
         self.recovery_status_lbl.configure(text=status_text)
 
+        mgr = self.controller.get_backup_manager()
+        try:
+            user_dir_p = Path(mgr.get_default_sims4_user_dir())
+            if not user_dir_p.exists():
+                self.user_dir_info_lbl.configure(
+                    text=f"Папка The Sims 4 не найдена: '{user_dir_p.name}' (будет создана при первом запуске игры).",
+                    text_color=self.theme.warning
+                )
+            else:
+                self.user_dir_info_lbl.configure(
+                    text=f"Папка данных: {user_dir_p}",
+                    text_color=self.theme.text_secondary
+                )
+        except Exception:
+            self.user_dir_info_lbl.configure(
+                text="Папка пользовательских данных The Sims 4 не определена.",
+                text_color=self.theme.text_muted
+            )
+
         for child in self.backups_scroll.winfo_children():
             child.destroy()
 
-        mgr = self.controller.get_backup_manager()
         existing = mgr.list_user_backups()
         if not existing:
             CTkLabel(

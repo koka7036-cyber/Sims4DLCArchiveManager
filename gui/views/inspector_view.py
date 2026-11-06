@@ -14,7 +14,9 @@ from gui.ctk_compat import (
     CTkButton,
     CTkEntry,
     CTkFont,
+    filedialog,
 )
+from core.exceptions import Sims4ManagerError
 
 
 class InspectorView(CTkFrame):
@@ -75,9 +77,20 @@ class InspectorView(CTkFrame):
             fg_color=self.theme.surface_secondary,
             border_color=self.theme.border_color,
             text_color=self.theme.text_primary,
-            width=450
+            width=380
         )
-        self.archive_entry.pack(side="left", padx=(0, 12))
+        self.archive_entry.pack(side="left", padx=(0, 8))
+
+        self.btn_browse = CTkButton(
+            input_row,
+            text="Обзор...",
+            width=80,
+            fg_color=self.theme.surface_secondary,
+            hover_color=self.theme.accent_subtle,
+            text_color=self.theme.text_primary,
+            command=self._on_browse_file
+        )
+        self.btn_browse.pack(side="left", padx=(0, 10))
 
         self.btn_verify = CTkButton(
             input_row,
@@ -118,17 +131,38 @@ class InspectorView(CTkFrame):
         )
         self.results_text.pack(anchor="nw", padx=12, pady=12)
 
+    def _on_browse_file(self) -> None:
+        try:
+            chosen = filedialog.askopenfilename(
+                title="Выберите архив DLC для инспекции",
+                filetypes=[("Архивы DLC", "*.zip *.7z *.rar"), ("Все файлы", "*.*")]
+            )
+            if chosen:
+                self.archive_entry.delete(0, "end")
+                self.archive_entry.insert(0, chosen)
+        except Exception:
+            pass
+
     def _resolve_archive_path(self) -> Path:
         raw = self.archive_entry.get().strip()
         if not raw:
-            raise ValueError("Укажите имя архива.")
+            raise Sims4ManagerError("Пожалуйста, укажите имя архива (например, EP01.zip) или выберите файл кнопкой «Обзор...».")
         p = Path(raw)
         if p.is_file():
             return p
         downloads_candidate = self.controller.context.downloads_dir / raw
         if downloads_candidate.is_file():
             return downloads_candidate
-        raise FileNotFoundError(f"Файл архива '{raw}' не найден в папке загрузок.")
+        # Check with extensions if not specified
+        if not raw.lower().endswith((".zip", ".7z", ".rar")):
+            for ext in (".zip", ".7z"):
+                cand = self.controller.context.downloads_dir / f"{raw}{ext}"
+                if cand.is_file():
+                    return cand
+        raise Sims4ManagerError(
+            f"Файл архива '{raw}' не найден в папке загрузок ({self.controller.context.downloads_dir}). "
+            f"Сначала скачайте архив во вкладке «Каталог» или укажите полный путь через «Обзор...»."
+        )
 
     def _on_verify_only(self) -> None:
         try:
@@ -157,7 +191,7 @@ class InspectorView(CTkFrame):
         try:
             p = self._resolve_archive_path()
             stem = p.stem.upper()
-            plan = self.controller.perform_dry_run(stem)
+            plan = self.controller.perform_dry_run(stem, archive_path=p)
 
             if hasattr(plan, "planned_creates"):
                 creates = plan.planned_creates

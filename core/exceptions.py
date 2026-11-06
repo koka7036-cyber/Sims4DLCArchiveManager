@@ -244,3 +244,8 @@ class DownloadSizeMismatchError(DownloadError):
 class DownloadRangeError(DownloadError):
     """Raised when server returns an invalid or incompatible Content-Range."""
     pass
+
+
+class Sims4UserDirectoryNotFoundError(Sims4ManagerError):
+    """Raised when The Sims 4 user saves/tray/mods directory does not exist on disk."""
+    pass

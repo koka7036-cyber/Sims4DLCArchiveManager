@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 try:
     import tkinter as tk
-    from tkinter import ttk
+    from tkinter import ttk, filedialog
     import customtkinter as ctk
     _HAS_NATIVE_CTK = True
 except Exception:
@@ -39,12 +39,24 @@ if _HAS_NATIVE_CTK:
     BooleanVar = tk.BooleanVar
     IntVar = tk.IntVar
     DoubleVar = tk.DoubleVar
+    filedialog = filedialog
 
     set_appearance_mode = ctk.set_appearance_mode
     set_default_color_theme = ctk.set_default_color_theme
 
 else:
     # Headless Mock Implementation for CustomTkinter
+
+    class MockFileDialog:
+        @staticmethod
+        def askopenfilename(**kwargs) -> str:
+            return ""
+
+        @staticmethod
+        def askdirectory(**kwargs) -> str:
+            return ""
+
+    filedialog = MockFileDialog
 
     class MockVar:
         def __init__(self, value: Any = None):
@@ -142,13 +154,25 @@ else:
             return bool(self._packed or self._gridded)
 
         def after(self, ms: int, func: Optional[Callable] = None, *args) -> str:
+            if not hasattr(self, "_after_callbacks"):
+                self._after_callbacks = {}
+            timer_id = f"timer_{id(func)}_{len(self._after_callbacks)}"
             if func:
-                # In headless tests, execute immediately or allow inspection
-                try:
-                    func(*args)
-                except Exception:
-                    pass
-            return "mock_timer"
+                self._after_callbacks[timer_id] = (ms, func, args)
+                # In headless tests, only one-shot ms==0 executes immediately without recursion
+                if ms == 0 and not getattr(self, "_in_after_exec", False):
+                    self._in_after_exec = True
+                    try:
+                        func(*args)
+                    except Exception:
+                        pass
+                    finally:
+                        self._in_after_exec = False
+            return timer_id
+
+        def after_cancel(self, timer_id: str) -> None:
+            if hasattr(self, "_after_callbacks"):
+                self._after_callbacks.pop(timer_id, None)
 
         def update(self) -> None:
             pass

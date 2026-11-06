@@ -13,12 +13,13 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Any
+from typing import Callable, Dict, List, Optional, Any, Union
 
 from core.logger import get_logger
 from core.app_context import AppContext, get_current_context
 from core.exceptions import (
     Sims4ManagerError,
+    Sims4UserDirectoryNotFoundError,
     FilesystemError,
     UnsupportedFilesystemError,
     NetworkError,
@@ -71,6 +72,7 @@ class AppController:
         # Observers
         self._listeners: List[Callable[[], None]] = []
         self._lock = threading.Lock()
+        self._ui_dispatcher: Optional[Callable[[Callable[[], None]], None]] = None
 
         # Core service references (instantiated on demand or injected for testing)
         self._game_finder: Optional[Any] = None
@@ -83,6 +85,10 @@ class AppController:
 
     # --- Listener Management ---
 
+    def set_ui_dispatcher(self, dispatcher: Optional[Callable[[Callable[[], None]], None]]) -> None:
+        """Sets dispatcher to invoke UI callbacks on the Tkinter main thread."""
+        self._ui_dispatcher = dispatcher
+
     def add_listener(self, callback: Callable[[], None]) -> None:
         if callback not in self._listeners:
             self._listeners.append(callback)
@@ -93,11 +99,22 @@ class AppController:
 
     def notify_change(self) -> None:
         """Notifies all registered UI listeners that state has changed."""
-        for cb in list(self._listeners):
+        def _invoke_all():
+            for cb in list(self._listeners):
+                try:
+                    cb()
+                except Exception as e:
+                    logger.error(f"Error in UI listener callback: {e}")
+
+        # If called from a non-main worker thread and dispatcher is provided, route through Tkinter after()
+        if self._ui_dispatcher is not None and threading.current_thread() != threading.main_thread():
             try:
-                cb()
+                self._ui_dispatcher(_invoke_all)
             except Exception as e:
-                logger.error(f"Error in UI listener callback: {e}")
+                logger.error(f"Failed to dispatch UI update: {e}")
+                _invoke_all()
+        else:
+            _invoke_all()
 
     # --- UI State Setters ---
 
@@ -515,7 +532,7 @@ class AppController:
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def perform_dry_run(self, item_id: str) -> Dict[str, Any]:
+    def perform_dry_run(self, item_id: str, archive_path: Optional[Union[str, Path]] = None) -> Dict[str, Any]:
         """
         Executes Dry Run simulation for a specific DLC archive.
         Returns plan dictionary (creates, overwrites, required_backup_size) with 0 disk mutations.
@@ -523,13 +540,25 @@ class AppController:
         if not self.game_info.found or not self.game_info.path:
             raise GameNotFoundError("Игра The Sims 4 не найдена. Укажите путь к игре.")
 
-        item = self.dlc_items.get(item_id)
-        if not item:
-            raise Sims4ManagerError(f"DLC '{item_id}' не найдено в каталоге.")
-
-        archive_path = self.context.downloads_dir / item.archive_name
-        if not archive_path.is_file():
-            raise Sims4ManagerError(f"Архив '{item.archive_name}' не скачан на диск.")
+        target_archive: Optional[Path] = None
+        if archive_path:
+            target_archive = Path(archive_path)
+            if not target_archive.is_file():
+                raise Sims4ManagerError(f"Файл архива не найден: '{archive_path}'")
+        else:
+            item = self.dlc_items.get(item_id)
+            if not item:
+                # Check directly in downloads_dir
+                direct = self.context.downloads_dir / f"{item_id}.zip"
+                if direct.is_file():
+                    target_archive = direct
+                else:
+                    raise Sims4ManagerError(f"DLC '{item_id}' не найдено в каталоге или папке загрузок.")
+            else:
+                archive_p = self.context.downloads_dir / item.archive_name
+                if not archive_p.is_file():
+                    raise Sims4ManagerError(f"Архив '{item.archive_name}' не скачан на диск.")
+                target_archive = archive_p
 
         from core.installer import DLCInstaller
         installer = DLCInstaller(
@@ -538,7 +567,7 @@ class AppController:
         )
         return installer.dry_run(
             dlc_code=item_id,
-            archive_path=str(archive_path),
+            archive_path=str(target_archive),
             game_root=self.game_info.path
         )
 
@@ -576,7 +605,9 @@ class AppController:
         """
         Translates backend exceptions into friendly, actionable Russian messages.
         """
-        if isinstance(exc, GameNotFoundError):
+        if isinstance(exc, Sims4UserDirectoryNotFoundError):
+            return str(exc)
+        elif isinstance(exc, GameNotFoundError):
             return "Каталог The Sims 4 не найден. Проверьте установку игры или укажите путь вручную."
         elif isinstance(exc, UnsupportedFilesystemError):
             return "Файловая система диска не поддерживается. Требуется том NTFS."
@@ -600,4 +631,8 @@ class AppController:
             return "Конфликт восстановления: целевой файл был изменён сторонней программой."
         elif isinstance(exc, DatabaseCorruptionError):
             return "База данных состояния повреждена. Требуется резервное восстановление."
+        elif isinstance(exc, Sims4ManagerError):
+            return str(exc)
+        elif isinstance(exc, (ValueError, FileNotFoundError)):
+            return str(exc)
         return f"Произошла непредвиденная ошибка: {exc}"

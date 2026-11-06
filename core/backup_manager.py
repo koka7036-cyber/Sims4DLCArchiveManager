@@ -26,6 +26,7 @@ from core.exceptions import (
     RecoveryConflictError,
     SharingViolationError,
     LockContextError,
+    Sims4UserDirectoryNotFoundError,
 )
 from core.logger import get_logger
 from core.security import LockContext
@@ -158,11 +159,45 @@ class BackupManager:
     def get_default_sims4_user_dir() -> str:
         """
         Returns default Electronic Arts/The Sims 4 folder in Documents.
-        On Windows: %USERPROFILE%/Documents/Electronic Arts/The Sims 4
+        On Windows: resolves Known Folders (Registry), OneDrive Documents, and user profile Documents.
         """
         if sys.platform == "win32":
+            candidates: List[str] = []
+
+            # 1. Try Windows Registry Known Folders (User Shell Folders -> Personal)
+            try:
+                import winreg
+                with winreg.OpenKey(
+                    winreg.HKEY_CURRENT_USER,
+                    r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders"
+                ) as key:
+                    personal_raw, _ = winreg.QueryValueEx(key, "Personal")
+                    personal = os.path.expandvars(personal_raw)
+                    if personal:
+                        candidates.append(os.path.join(personal, "Electronic Arts", "The Sims 4"))
+            except Exception:
+                pass
+
             user_profile = os.environ.get("USERPROFILE", str(Path.home()))
-            return os.path.join(user_profile, "Documents", "Electronic Arts", "The Sims 4")
+
+            # 2. Check OneDrive redirected Documents
+            onedrive = os.environ.get("OneDrive") or os.environ.get("OneDriveConsumer")
+            if onedrive:
+                candidates.append(os.path.join(onedrive, "Documents", "Electronic Arts", "The Sims 4"))
+                candidates.append(os.path.join(onedrive, "Документы", "Electronic Arts", "The Sims 4"))
+
+            # 3. Standard user profile Documents and localized variants
+            candidates.append(os.path.join(user_profile, "Documents", "Electronic Arts", "The Sims 4"))
+            candidates.append(os.path.join(user_profile, "Документы", "Electronic Arts", "The Sims 4"))
+
+            # Return the first candidate path that physically exists on disk
+            for cand in candidates:
+                if os.path.isdir(cand):
+                    return os.path.abspath(cand)
+
+            # If none exists yet, return the first candidate (or standard profile Documents)
+            return os.path.abspath(candidates[0] if candidates else os.path.join(user_profile, "Documents", "Electronic Arts", "The Sims 4"))
+
         return os.path.join(str(Path.home()), "Documents", "Electronic Arts", "The Sims 4")
 
     def create_user_backup(
@@ -178,7 +213,10 @@ class BackupManager:
         """
         source_dir = os.path.abspath(custom_user_dir or self.get_default_sims4_user_dir())
         if not os.path.exists(source_dir):
-            raise FileNotFoundError(f"The Sims 4 user directory not found at: '{source_dir}'")
+            raise Sims4UserDirectoryNotFoundError(
+                f"Папка пользовательских данных The Sims 4 не найдена по пути: '{source_dir}'. "
+                f"Запустите игру хотя бы один раз для создания папки сохранений или укажите пользовательский путь."
+            )
 
         subdirs_map = {
             "SAVES": ["saves"],

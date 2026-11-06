@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from core._network_compat import requests, HTTPAdapter, Retry
 from core.exceptions import (
@@ -146,17 +146,20 @@ class FileDownloader:
         self,
         session: Optional[requests.Session] = None,
         timeout: tuple[float, float] = (DEFAULT_CONNECT_TIMEOUT, DEFAULT_READ_TIMEOUT),
+        max_retries: Optional[int] = None,
     ) -> None:
         self.timeout = timeout
+        self.default_max_retries = max_retries or DEFAULT_MAX_RETRIES
+        self.max_retries = self.default_max_retries
         if session is not None:
             self.session = session
         else:
             self.session = requests.Session()
             retry_strategy = Retry(
-                total=DEFAULT_MAX_RETRIES,
-                connect=DEFAULT_MAX_RETRIES,
-                read=DEFAULT_MAX_RETRIES,
-                status=DEFAULT_MAX_RETRIES,
+                total=self.default_max_retries,
+                connect=self.default_max_retries,
+                read=self.default_max_retries,
+                status=self.default_max_retries,
                 backoff_factor=DEFAULT_BACKOFF_FACTOR,
                 status_forcelist=[429, 500, 502, 503, 504],
                 allowed_methods=["GET", "HEAD"],
@@ -165,6 +168,32 @@ class FileDownloader:
             adapter = HTTPAdapter(max_retries=retry_strategy)
             self.session.mount("https://", adapter)
             self.session.mount("http://", adapter)
+
+    def download_file(
+        self,
+        url: str,
+        destination_path: Union[str, Path],
+        expected_size: Optional[int] = None,
+        expected_sha256: Optional[str] = None,
+        expected_md5: Optional[str] = None,
+        progress_callback: Optional[Callable[[DownloadProgress], None]] = None,
+        cancel_event: Optional[threading.Event] = None,
+        max_retries: Optional[int] = None,
+    ) -> DownloadProgress:
+        """
+        Convenience wrapper downloading a single file by path, constructing a DownloadTask internally.
+        """
+        dest_path = Path(destination_path)
+        task = DownloadTask(
+            url=url,
+            destination_dir=dest_path.parent,
+            filename=dest_path.name,
+            expected_size=expected_size,
+            expected_sha256=expected_sha256,
+            expected_md5=expected_md5,
+            max_retries=max_retries or self.default_max_retries,
+        )
+        return self.download(task=task, progress_callback=progress_callback, cancel_event=cancel_event)
 
     def download(
         self,
