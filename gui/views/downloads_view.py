@@ -52,6 +52,28 @@ class DownloadsView(CTkFrame):
         )
         self.subtitle_label.pack(anchor="w", pady=(2, 0))
 
+        # Explicitly show the real download destination so the user never has to guess.
+        destination_row = CTkFrame(self.header_frame, fg_color="transparent")
+        destination_row.pack(fill="x", pady=(8, 0))
+        CTkLabel(
+            destination_row,
+            text=f"Папка сохранения DLC: {self.controller.context.downloads_dir}",
+            font=CTkFont(size=12),
+            text_color=self.theme.text_secondary,
+            anchor="w"
+        ).pack(side="left", fill="x", expand=True)
+        self.btn_open_downloads = CTkButton(
+            destination_row,
+            text="Открыть папку",
+            width=120,
+            height=28,
+            fg_color=self.theme.surface_secondary,
+            hover_color=self.theme.accent_subtle,
+            text_color=self.theme.text_primary,
+            command=self._open_downloads_folder
+        )
+        self.btn_open_downloads.pack(side="right", padx=(10, 0))
+
         # Scrollable container for cards
         self.scroll_container = CTkScrollableFrame(
             self,
@@ -188,6 +210,19 @@ class DownloadsView(CTkFrame):
             "pbar": pbar,
             "metrics_lbl": metrics_lbl,
         }
+
+    def _open_downloads_folder(self) -> None:
+        if not self.controller.open_downloads_folder():
+            try:
+                from gui.dialogs.error_dialog import ErrorDialog
+                ErrorDialog(
+                    self,
+                    "Папка загрузок",
+                    f"Не удалось открыть папку загрузок:\n{self.controller.context.downloads_dir}",
+                    self.theme,
+                )
+            except Exception:
+                pass
 
     def _cancel_download(self, item: Any) -> None:
         mgr = self.controller.get_download_manager()
